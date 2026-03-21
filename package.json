@@ -1,0 +1,18 @@
+{
+  "name": "ohai",
+  "version": "0.1.0",
+  "description": "OHAI - Open Home AI Protocol Documentation",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev docs",
+    "build": "vitepress build docs",
+    "preview": "vitepress preview docs"
+  },
+  "keywords": ["smart-home", "iot", "ai", "open-protocol"],
+  "license": "MIT",
+  "packageManager": "pnpm@10.15.1",
+  "devDependencies": {
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.29"
+  }
+}
