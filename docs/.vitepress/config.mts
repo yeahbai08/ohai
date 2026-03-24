@@ -49,6 +49,10 @@ export default defineConfig({
           items: [
             { text: 'Architecture & Security', link: '/protocol/secure-net-design' },
             { text: 'Message Protocol', link: '/protocol/secure-message-design' },
+            { text: 'Capability Model & Schema', link: '/protocol/capability-model' },
+            { text: 'Standard Capabilities', link: '/protocol/standard-capabilities' },
+            { text: 'Protocol Framework', link: '/protocol/protocol-framework' },
+            { text: 'Error Codes', link: '/protocol/error-codes' },
             { text: 'Blockchain Registry', link: '/protocol/blockchain-registry' },
           ],
         },

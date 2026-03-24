@@ -31,7 +31,10 @@ ohai/
 │   │   ├── overview.md
 │   │   ├── message-format.md
 │   │   ├── device-model.md
-│   │   └── ai-integration.md
+│   │   ├── ai-integration.md
+│   │   ├── capability-model.md
+│   │   ├── standard-capabilities.md
+│   │   └── error-codes.md
 │   └── sdk/                   # SDK documentation section
 │       ├── overview.md
 │       ├── javascript.md
