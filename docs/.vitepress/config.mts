@@ -1,12 +1,21 @@
-import { defineConfig } from 'vitepress'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 
-export default defineConfig({
+export default withMermaid({
   title: 'OHAI Protocol',
   description: 'Open Home AI Protocol - AI-powered open protocol for smart home devices',
 
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
   ],
+
+  vite: {
+    optimizeDeps: {
+      include: ['mermaid', 'dayjs'],
+    },
+    ssr: {
+      noExternal: ['mermaid'],
+    },
+  },
 
   themeConfig: {
     logo: '/logo.svg',
@@ -36,24 +45,24 @@ export default defineConfig({
       ],
       '/protocol/': [
         {
-          text: 'Protocol',
+          text: '协议规范',
           items: [
-            { text: 'Overview', link: '/protocol/overview' },
-            { text: 'Message Format', link: '/protocol/message-format' },
-            { text: 'Device Model', link: '/protocol/device-model' },
-            { text: 'AI Integration', link: '/protocol/ai-integration' },
+            { text: '协议概览', link: '/protocol/overview' },
+            { text: '架构与安全设计', link: '/protocol/secure-net-design' },
+            { text: '消息协议', link: '/protocol/secure-message-design' },
+            { text: '协议框架', link: '/protocol/protocol-framework' },
+            { text: '设备能力模型', link: '/protocol/device-model' },
+            { text: '设备 Schema 规范', link: '/protocol/schema' },
+            { text: '标准能力库', link: '/protocol/standard-capabilities' },
+            { text: 'AI 集成', link: '/protocol/ai-integration' },
+            { text: '错误码规范', link: '/protocol/error-codes' },
           ],
         },
         {
-          text: 'Design Specifications',
+          text: '附录',
           items: [
-            { text: 'Architecture & Security', link: '/protocol/secure-net-design' },
-            { text: 'Message Protocol', link: '/protocol/secure-message-design' },
-            { text: 'Capability Model & Schema', link: '/protocol/capability-model' },
-            { text: 'Standard Capabilities', link: '/protocol/standard-capabilities' },
-            { text: 'Protocol Framework', link: '/protocol/protocol-framework' },
-            { text: 'Error Codes', link: '/protocol/error-codes' },
-            { text: 'Blockchain Registry', link: '/protocol/blockchain-registry' },
+            { text: 'AI 能力探测协议', link: '/protocol/secure-capability-prob' },
+            { text: '错误码完备性论证', link: '/protocol/error-code-completeness-proof' },
           ],
         },
       ],

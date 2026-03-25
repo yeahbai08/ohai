@@ -8,11 +8,23 @@
     "build": "vitepress build docs",
     "preview": "vitepress preview docs"
   },
-  "keywords": ["smart-home", "iot", "ai", "open-protocol"],
+  "keywords": [
+    "smart-home",
+    "iot",
+    "ai",
+    "open-protocol"
+  ],
   "license": "MIT",
   "packageManager": "pnpm@10.15.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
   "devDependencies": {
+    "mermaid": "^11.13.0",
     "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17",
     "vue": "^3.5.29"
   }
 }
