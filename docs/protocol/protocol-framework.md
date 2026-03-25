@@ -806,7 +806,7 @@ ohai.lock:
         - when: { locked: true }           # 锁门
           policy: allow                     # 自动化可直接执行
         - when: { locked: false }          # 开锁
-          policy: deny                      # 禁止自动化执行
+          policy: confirm                   # 自动化需用户确认（厂商/用户可通过覆盖升级到 deny）
       params:
         type: object
         properties:
@@ -885,10 +885,47 @@ ohai.thermostat:
 
 #### 设计原则
 
-1. **安全策略由标准能力定义，非用户声明**：`automation_policy` 写在 `ohai.*` 标准能力库中，与命令定义绑定。用户创建规则时无需（也无法）声明权限范围——系统自动执行策略
+1. **标准能力定义安全下限**：`automation_policy` 写在 `ohai.*` 标准能力库中，设定每条命令的最低安全等级。厂商和用户只能在此基础上升级策略，不能降级
 2. **默认安全**：标准能力中安全敏感的命令/参数组合默认标记为 `deny` 或 `confirm`，用户不做任何配置也能获得保护
 3. **厂商自定义能力同样适用**：厂商在自定义能力中声明 `automation_policy`，Server 统一执行。未声明策略的命令默认为 `allow`
 4. **用户手动操作不受限制**：`automation_policy` 仅约束自动化引擎。用户在 Console App 中手动操作设备时，所有命令均可执行（通过 [5.1 节](#_5-1-命令下发完整生命周期)的正常命令流程下发）
+
+#### 三层策略覆盖模型
+
+`automation_policy` 的生效策略由三层叠加决定，每层只能升级（加严）不能降级（放宽）：
+
+```
+effective_policy = max(standard_policy, vendor_override, user_override)
+
+策略严格度排序：allow < confirm < deny
+```
+
+| 层级 | 时机 | 谁设置 | 存储位置 |
+|---|---|---|---|
+| **标准能力定义** | 协议设计时 | OHAI 标准库 | 标准能力库（安全下限，不可降级） |
+| **厂商 Schema 覆盖** | 设备注册时 | 设备开发者 | 设备 `schema.json` 的 `overrides.commands` |
+| **用户设备配置** | 运行时 | 用户（Console App） | Server 端设备配置数据库 |
+
+**厂商覆盖**通过 Schema `overrides` 机制实现（详见 [设备能力模型 - 覆盖标准能力的部分约束](./capability-model.md#_4-2-capability-引用与定义)），在设备注册时由 Server 校验并合并。
+
+**用户覆盖**通过 Console App 的设备设置界面配置。Console App 展示该设备所有命令的当前生效策略（`max(standard, vendor)`），用户只能选择当前值或更严格的值。覆盖存储在 Server 端设备配置中，不影响设备 Schema。
+
+**示例**：
+
+```
+ohai.lock — set_locked
+├── locked: true
+│   ├── 标准定义:    allow
+│   ├── 厂商覆盖:    (无)
+│   ├── 用户覆盖:    (无)
+│   └── 生效策略:    allow
+│
+└── locked: false
+    ├── 标准定义:    confirm
+    ├── 厂商覆盖:    deny     ← 高安全门锁厂商升级
+    ├── 用户覆盖:    (无)
+    └── 生效策略:    deny      = max(confirm, deny)
+```
 
 ### 9.9 遥测数据存储
 
