@@ -18,23 +18,29 @@ hero:
 
 features:
   - icon: 🤖
-    title: AI 驱动控制
-    details: 利用大语言模型理解自然语言指令，自动化复杂的跨设备交互，让整个智能家居系统更加智能。
+    title: AI 是大脑，不是助手
+    details: 自然语言直接控制设备，智能编排自动化场景。不用写规则，让家自己思考。
   - icon: 🔓
     title: 打破生态壁垒
-    details: 厂商中立的开放协议，实现不同制造商和物联网平台之间设备的无缝互操作。
-  - icon: ⚡
-    title: 高度可定制
-    details: 自定义自动化规则、场景和工作流，匹配你的生活方式。告别千篇一律的智能家居体验。
-  - icon: 🔗
-    title: 跨设备自动化
-    details: 在不同品牌的设备之间创建智能联动。灯光、温控和音箱作为一个统一的系统协同工作。
+    details: 厂商中立的开放协议。不同品牌的灯光、温控、音箱，在同一系统内无缝协作。
+  - icon: 🏠
+    title: 数据不出家门
+    details: Server 和大模型完全运行在局域网内，在架构层面保护隐私。
+  - icon: 🔐
+    title: 硬件级入网认证
+    details: 伪造设备无法入网，篡改固件无法运行。零认证费用，任何厂商可安全加入。
   - icon: 🛡️
-    title: 零信任安全架构
-    details: 多层安全设计——不受信任的第三方设备运行在隔离的 Sub Agent 中，上下文完全分离。安全能力探测协议确保提示词注入无法触及 AI 核心，严格的 Schema 校验阻止所有自由文本攻击向量。
+    title: AI 攻不破，设备逃不出
+    details: 零信任架构——第三方设备完全隔离运行，提示词注入无法触及 AI 核心。
   - icon: 🧩
-    title: 可扩展 SDK
-    details: 提供 JavaScript、Python 等多语言 SDK。轻松构建自定义集成、设备驱动和 AI Agent。
+    title: 一套 SDK，全芯片覆盖
+    details: ESP32、RISC-V、ARM Cortex-M——无论什么芯片，即刻接入 OHAI 生态。
+  - icon: 🧱
+    title: 能力积木，自由组合
+    details: 设备不是固定类型，而是标准能力的自由拼装。自定义能力统一格式，即插即用。
+  - icon: 🎨
+    title: 一次声明，全平台渲染
+    details: 厂商声明一次面板 UI，所有平台原生呈现。
 ---
 
 <style>
@@ -44,29 +50,13 @@ features:
 }
 </style>
 
-<div style="padding: 48px 24px; text-align: center; max-width: 720px; margin: 0 auto;">
+<div style="padding: 48px 24px; max-width: 820px; margin: 0 auto;">
 
 ## 工作原理
 
-OHAI（Open Home AI）定义了 **AI Agent** 与 **IoT 设备** 之间的轻量级消息协议。AI Agent 理解用户意图——无论是语音、文字还是自动化触发——并将其转化为标准化的设备命令。
+每台设备通过安全配网接入 **OHAI Server**。Server 为每台设备启动一个**完全隔离的 Sub Agent**——独立的 LLM 上下文，互不可见。**Main Agent** 负责编排所有 Sub Agent 并处理用户交互。用户通过 **Console App** 以自然语言访问和管理整个智能家居系统。
 
-```
-┌──────────┐  文字/语音/图片       ┌──────────────┐
-│   用户   │ ──────────────────▶   │   AI Agent   │
-│   意图   │                       │ (基于大模型)  │
-└──────────┘                       └──────┬───────┘
-                                          │ OHAI 协议
-                          ┌───────────────┼───────────────┐
-                          ▼               ▼               ▼
-                    ┌──────────┐   ┌──────────┐   ┌──────────┐
-                    │  设备 A  │   │  设备 B  │   │  设备 C  │
-                    │ (品牌 X) │   │ (品牌 Y) │   │ (品牌 Z) │
-                    └──────────┘   └──────────┘   └──────────┘
-```
-
-</div>
-
-<div style="padding: 0 24px 48px; max-width: 720px; margin: 0 auto;">
+<img src="/architecture.svg" alt="OHAI Architecture" style="width: 100%; margin: 24px 0;" />
 
 ## 安全性：无法被欺骗的 AI
 
