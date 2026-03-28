@@ -243,9 +243,9 @@ sequenceDiagram
 
     D1->>S: MQTT event Topic: temperature_update (32°C)
     S->>S: 更新 Shadow（若事件有 reports）
-    S->>S: 自动化引擎匹配规则
-    Note over S: 规则: 温度 > 30°C → 开空调
-    S->>S: 读取空调 Shadow，评估条件
+    S->>S: 自动化引擎：事件分发到规则模块
+    Note over S: 规则模块执行 Elixir 逻辑
+    S->>S: 规则调用 API.get_state 读取空调 Shadow
     S->>D2: MQTT cmd Topic: state_cmd:ohai.thermostat:set_thermostat
     D2->>S: MQTT cmd/resp: 执行成功
     S->>S: 更新空调 Shadow
