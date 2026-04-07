@@ -58,3 +58,11 @@ ohai/
 - Use VitePress built-in components (`::: tip`, `::: warning`, etc.) for callouts
 - Pages under construction use the `::: tip Work in Progress` callout pattern
 - Keep the homepage content in `docs/index.md` using VitePress frontmatter `layout: home`
+
+## Design Change Security Checklist
+
+Every design-related change MUST go through the following security review:
+
+- **Prompt Injection**: Check whether free-text fields (e.g., device names, scene descriptions, user inputs) could be exploited as prompt injection vectors against the AI layer. Ensure all user-provided text is treated as data, never as instructions.
+- **Semantic Attacks via External Data**: Evaluate whether allowing external data (e.g., third-party device states, cloud API responses) into the system could cause semantic-level attacks — manipulating the AI's understanding or decision-making through crafted payloads.
+- **Third-Party Code Risks**: Assess whether the change introduces or expands the execution of third-party code (e.g., plugins, device drivers, automation scripts). Consider the potential for system compromise, privilege escalation, or information leakage through such code.
