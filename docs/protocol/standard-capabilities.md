@@ -34,7 +34,7 @@ OHAI 对设备所有消息中的字符串类型实施 **严格约束** — Schem
 | [媒体与音频](#_8-媒体与音频) | `ohai.media_player`、`ohai.volume`、`ohai.media_input` |
 | [电力与能源](#_9-电力与能源) | `ohai.power_meter`、`ohai.energy_meter` |
 | [传感器](#_10-传感器) | `ohai.sensor.temperature`、`ohai.sensor.humidity`、`ohai.sensor.illuminance`、`ohai.sensor.pressure`、`ohai.sensor.motion`、`ohai.sensor.occupancy`、`ohai.sensor.contact`、`ohai.sensor.smoke`、`ohai.sensor.co`、`ohai.sensor.water_leak`、`ohai.sensor.pm25`、`ohai.sensor.co2`、`ohai.sensor.tvoc`、`ohai.sensor.noise`、`ohai.sensor.battery`、`ohai.sensor.air_quality` |
-| [家用电器](#_11-家用电器) | `ohai.robot_vacuum`、`ohai.washer`、`ohai.dryer`、`ohai.camera`、`ohai.irrigation` |
+| [家用电器](#_11-家用电器) | `ohai.robot_vacuum`、`ohai.washer`、`ohai.dryer`、`ohai.camera`、`ohai.irrigation`、`ohai.water_heater` |
 
 ---
 
@@ -2600,6 +2600,104 @@ ohai.irrigation:
 
 ---
 
+### `ohai.water_heater` — 热水器
+
+**States**
+
+| 键名 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `heating_mode` | string | enum: once, cycle | 加热模式（once=单次加热, cycle=循环加热） |
+| `target_temp` | number | unit: °C, range: 35–75 | 目标水温 |
+| `current_temp` | number | unit: °C | 当前水温（只读） |
+| `status` | string | enum: idle, heating, keeping, complete | 工作状态 |
+
+- `heating_mode: once`——加热到 `target_temp` 后停止，不再自动复热，`status` 变为 `complete`。
+- `heating_mode: cycle`——持续维持 `target_temp`，水温下降时自动复热，`status` 在 `heating` / `keeping` 间切换。
+
+**Commands**
+
+| 键名 | 类型 | affects | ai_policy | 说明 |
+|---|---|---|---|---|
+| `set_water_heater` | state_cmd | `[heating_mode, target_temp]` | allow（极端高温 confirm） | 设置加热参数 |
+
+`ai_policy_by_params`：当 `target_temp ≥ 55` 时策略升级为 `confirm`，防止自动化设置过高水温（烫伤风险）。
+
+**Events**
+
+| 键名 | reports | 说明 |
+|---|---|---|
+| `temperature_update` | `[current_temp]` | 水温变化上报 |
+| `heating_complete` | `[status]` | 单次加热完成（仅 once 模式） |
+
+::: details 展开完整定义
+```yaml
+ohai.water_heater:
+  description: 热水器
+  states:
+    heating_mode:
+      type: string
+      enum: [once, cycle]
+      description: 加热模式（once=单次加热, cycle=循环加热）
+    target_temp:
+      type: number
+      unit: "°C"
+      minimum: 35
+      maximum: 75
+      description: 目标水温
+    current_temp:
+      type: number
+      unit: "°C"
+      description: 当前水温（只读）
+    status:
+      type: string
+      enum: [idle, heating, keeping, complete]
+      description: 工作状态
+  commands:
+    set_water_heater:
+      cmd_type: state_cmd
+      affects: [heating_mode, target_temp]
+      description: 设置加热参数
+      ai_policy: allow
+      ai_policy_by_params:
+        - when:
+            target_temp: { minimum: 55 }
+          policy: confirm
+      params:
+        type: object
+        properties:
+          heating_mode: { type: string, enum: [once, cycle] }
+          target_temp: { type: number, minimum: 35, maximum: 75 }
+        additionalProperties: false
+      result:
+        type: object
+        properties:
+          heating_mode: { type: string, enum: [once, cycle] }
+          target_temp: { type: number }
+        additionalProperties: false
+  events:
+    temperature_update:
+      description: 水温变化上报
+      reports: [current_temp]
+      params:
+        type: object
+        properties:
+          current_temp: { type: number }
+        required: [current_temp]
+        additionalProperties: false
+    heating_complete:
+      description: 单次加热完成（仅 once 模式）
+      reports: [status]
+      params:
+        type: object
+        properties:
+          status: { type: string, enum: [idle, heating, keeping, complete] }
+        required: [status]
+        additionalProperties: false
+```
+:::
+
+---
+
 ## 附录 B：ai_policy 速查表
 
 以下列出所有标准能力中**非默认（非 allow）** 的自动化安全策略：
@@ -2620,6 +2718,7 @@ ohai.irrigation:
 | `ohai.camera` | `take_snapshot` | — | **confirm** | 涉及隐私 |
 | `ohai.child_lock` | `set_child_lock` | `child_lock: true` | allow | 激活儿童锁安全 |
 | `ohai.child_lock` | `set_child_lock` | `child_lock: false` | **deny** | 禁止自动化解除儿童锁 |
+| `ohai.water_heater` | `set_water_heater` | `target_temp ≥ 55` | **confirm** | 高水温需确认（烫伤风险） |
 
 所有其他命令的默认策略为 `allow`。
 
@@ -2667,7 +2766,7 @@ ohai.irrigation:
 | 干衣机 | `ohai.switch` + `ohai.dryer` + `ohai.child_lock` |
 | 洗烘一体机 | `ohai.switch` + `ohai.washer` + `ohai.dryer` + `ohai.child_lock` |
 | 安防摄像头 | `ohai.camera` + `ohai.sensor.motion` |
-| 热水器 | `ohai.switch` + `ohai.thermostat` |
+| 热水器 | `ohai.switch` + `ohai.water_heater` |
 | 光照传感器 | `ohai.sensor.illuminance` + `ohai.sensor.battery` |
 | 人体存在传感器 | `ohai.sensor.occupancy` + `ohai.sensor.battery` |
 | 噪声传感器 | `ohai.sensor.noise` + `ohai.sensor.battery` |

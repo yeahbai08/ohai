@@ -8,14 +8,14 @@
 
 ```
 ┌─────────────────────────────────────────────────┐
-│           能力层 (Capability Layer)               │  开发者定义
-│  States / Commands / Events / Panel              │  schema.json
+│              (Capability Layer)                 │  开发者定义
+│      States / Commands / Events / Panel         │  schema.json
 ├─────────────────────────────────────────────────┤
-│         消息框架层 (Message Framework Layer)       │  OHAI 协议
-│  JSON-RPC 2.0 / CBOR / QoS / Topic / Shadow     │  本文档
+│              (Message Framework Layer)          │  OHAI 协议
+│    JSON-RPC 2.0 / CBOR / QoS / Topic / Shadow   │  本文档
 ├─────────────────────────────────────────────────┤
-│           传输层 (Transport Layer)                │  OHAI 协议
-│  MQTT 5.0 / mTLS 1.3 / TLS + JWT               │  secure-net-design
+│                (Transport Layer)                │  OHAI 协议
+│        MQTT 5.0 / mTLS 1.3 / TLS + JWT          │  secure-net-design
 └─────────────────────────────────────────────────┘
 ```
 

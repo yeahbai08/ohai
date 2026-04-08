@@ -353,10 +353,9 @@ Server 通过以下机制强制执行此限制：
 | 风险 | 缓解措施 |
 |---|---|
 | LLM 幻觉生成调用不存在的 API | AST 白名单拒绝非法调用 + Elixir 编译期报错 |
-| 用户 prompt 被注入导致恶意代码 | AST 白名单确保即使代码"恶意"也无法逃逸（无网络/文件/系统访问） |
 | 资源耗尽（死循环/巨大数据结构） | 规则进程独立，内存上限 + 执行超时 |
 | 规则频繁下发命令 | API 层 rate limiting |
-| 用户无法理解生成的代码 | Console App 同时展示自然语言描述和代码；提供 dry run 模式 |
+| 用户无法理解生成的代码 | AI 同时会生成代码流程图，在 Console App 上展示 |
 | LLM 引入被投毒的第三方库 | 禁止第三方依赖，AST 白名单 + 无包管理器访问 + 编译隔离 |
 | 环境数据源返回错误数据 | Server 端值域校验 + 数据不可用时 API 返回 nil + 数据源不可第三方扩展 |
 
@@ -377,7 +376,7 @@ Console App 同时向用户展示**自然语言描述**和**生成的 Elixir 代
 
 #### 状态管理
 
-- **启用/禁用**：用户可在 Console App 中临时禁用规则而不删除，禁用后规则进程挂起，不再接收事件
+- **启用/禁用**：用户可在 Console App 中临时禁用规则而不删除，禁用后规则进程停止，不再接收事件
 - **删除**：规则进程终止，模块卸载
 - **优先级**：用户可为规则设置优先级（1-10），用于冲突检测时仲裁
 
@@ -424,8 +423,10 @@ defmodule OHAI.Rules.HighTempAC do
 
   on_event "temp_sensor_123", "ohai.sensor.temperature", :temperature_update do
     if params.temperature > 30 do
-      # 同名定时器自动覆盖 = 天然防抖
-      API.schedule_after(:high_temp_check, :timer.minutes(5))
+      # 仅在定时器不存在时启动，避免反复重置导致永远无法到期
+      unless API.timer_active?(:high_temp_check) do
+        API.schedule_after(:high_temp_check, :timer.minutes(5))
+      end
     else
       API.cancel_timer(:high_temp_check)
     end
@@ -443,7 +444,7 @@ defmodule OHAI.Rules.HighTempAC do
 end
 ```
 
-**要点**：`schedule_after` 的同名覆盖特性实现了防抖——5 分钟内每次温度上报都重置计时器，只有持续超过 30°C 满 5 分钟才真正触发。动态参数 `temp - 6` 使目标温度自适应当前室温。
+**要点**：`timer_active?` 保证定时器只创建一次——首次超过 30°C 时启动 5 分钟倒计时，后续上报不会重置它；温度降回 30°C 以下时取消定时器。这样只有**持续**超温满 5 分钟才会触发空调。动态参数 `temp - 6` 使目标温度自适应当前室温。
 
 #### 示例 2：深夜开门告警
 
@@ -550,57 +551,55 @@ end
 
 **要点**：`API.sun_times/1` 根据用户配置的地理位置计算天文时间。规则在 `init` 时和每次执行后重新计算下一个事件时间，适应日出日落的日变化。
 
-#### 示例 5：基于历史数据的节能推荐
+#### 示例 5：基于历史数据的智能建议
 
-"分析过去一周的空调使用数据，如果每天运行超过 8 小时且目标温度一直低于 24°C，建议用户将目标温度提高 2 度以节能。"
+OHAI Server 会周期性地将设备历史数据提交给 LLM 进行分析。LLM 从数据中识别出用户的使用习惯和模式后，以自然语言向用户提出自动化建议。用户确认后，LLM 再将建议转化为具体的规则代码并部署。这个过程不是一条预编写的规则，而是系统的内在智能。
+
+**场景**：系统持续收集热水器 `water_heater_01` 的运行数据（水流量、加热启停等）。经过两周的积累，LLM 在例行分析中发现了如下模式——
+
+> **LLM 分析结果（内部）**：设备 `water_heater_01` 在过去 14 天中有 12 天于 6:50–7:10 之间检测到水流并开始加热，每次持续 15–25 分钟。模式高度稳定，判断为用户晨间洗漱用水习惯。当前热水器运行在单次加热模式（on-demand），用户每天早晨需要等待一段时间才能获得热水。
+
+系统随即通过 Console App 向用户推送建议：
+
+> **推送给用户的建议**：我注意到您几乎每天早上 7 点左右会使用热水，大概持续 20 分钟——看起来是起床洗漱的时间。目前热水器是按需加热的，每次开水龙头都需要等一会儿才有热水。\
+> \
+> 要不要我创建一条自动化规则：**每天 6:40 提前将热水器切换为循环模式预热，这样您起床后打开水龙头就有热水；7:30 自动切回按需模式以节省电费**？
+
+用户确认后，LLM 生成以下规则并部署到 Server：
 
 ```elixir
-defmodule OHAI.Rules.EnergySavingAdvice do
+defmodule OHAI.Rules.MorningWaterHeater do
   use OHAI.Rule
 
-  @rule_name "节能建议"
-  @description "根据空调使用历史推荐节能设置"
+  @rule_name "早晨热水预热"
+  @description "每天早晨提前预热热水器，洗漱后自动切回节能模式"
 
   def init do
-    API.schedule_cron(:weekly_analysis, "0 9 * * 1")  # 每周一早上 9 点
+    API.schedule_cron(:preheat, "40 6 * * *")
+    API.schedule_cron(:energy_save, "30 7 * * *")
   end
 
-  on_timer :weekly_analysis do
-    history = API.query_history("ac_456", "ohai.thermostat", :target_temp,
-      last: {7, :days})
-
-    if length(history) > 0 do
-      avg_temp = Enum.sum(Enum.map(history, & &1.value)) / length(history)
-      daily_hours = estimate_daily_runtime(history)
-
-      if daily_hours > 8 and avg_temp < 24 do
-        API.notify(
-          "过去一周空调日均运行 #{Float.round(daily_hours, 1)} 小时，" <>
-          "平均目标温度 #{Float.round(avg_temp, 1)}°C。" <>
-          "建议将目标温度提高 2°C 至 #{Float.round(avg_temp + 2, 1)}°C，预计可节能 10-15%。"
-        )
-      end
-    end
+  on_timer :preheat do
+    API.send_command("water_heater_01", "ohai.water_heater",
+      "set_mode", %{mode: "recirculating"})
   end
 
-  defp estimate_daily_runtime(history) do
-    # 根据状态变更记录估算每天运行时长
-    total_entries = length(history)
-    # 简化计算：非零温度记录数 / 每小时采样频率 / 天数
-    total_entries / 6 / 7
+  on_timer :energy_save do
+    API.send_command("water_heater_01", "ohai.water_heater",
+      "set_mode", %{mode: "on_demand"})
   end
 end
 ```
 
-**要点**：`API.query_history/4` 使规则能够分析设备的历史使用模式。这是 AI 自动生成节能/舒适度优化规则的基础——系统可以从历史数据中发现用户习惯，自动生成类似规则并推荐给用户。
+**要点**：这个示例展示了 OHAI 与前几个示例根本不同的一面——规则代码本身并不复杂，真正的智能在于**发现用户习惯并主动建议**的过程。系统通过 `API.query_history/4` 获取设备历史数据，交由 LLM 进行模式识别和推理，再将洞察转化为用户可理解的自然语言建议。用户确认后，LLM 才生成规则代码。这种"观察→洞察→建议→确认→部署"的闭环，让 OHAI 表现为一个持续学习、主动服务的智能系统。
 
 ### 2.8 规则冲突检测
 
 当多条规则可能同时触发并向同一设备发送矛盾的命令时（例如一条规则要开空调制冷，另一条要开制热），Server 采用以下策略：
 
-1. **用户优先级**：用户可以为规则设置优先级（1-10），冲突时高优先级规则优先
-2. **运行时冲突检测**：`API.send_command` 在执行前检查是否有其他规则在短时间窗口内向同一设备的同一能力下发了矛盾命令，如检测到则暂停后到达的命令并通知用户
-3. **冲突告警**：Server 检测到矛盾命令时通知 Console App，由用户决定
+1. **用户优先级**：用户要为规则设置优先级，默认优先级跟规则的创建顺序相同，按照优先级依次触发。
+2. **创建规则时静态分析**：在规则创建阶段，Server 对新规则进行静态分析，检测是否存在与现有规则的潜在冲突（如同一设备同一能力的相反命令），并在 Console App 中警告用户，建议调整规则优先级或修改规则逻辑以避免冲突。
+3. **运行时冲突检测**：`API.send_command` 在执行前检查是否有其他规则在短时间窗口内向同一设备的同一能力下发了矛盾命令，如检测到则暂停后到达的命令并通知用户。
 
 ### 2.9 AI 决策权限控制
 
@@ -613,7 +612,7 @@ OHAI 的能力模型在架构层面已将每个能力设计为单一职责、按
 - `set_locked({ locked: true })` → 锁门，最坏后果是造成不便（被锁在门外）
 - `set_locked({ locked: false })` → 开锁，可能导致非法入侵
 
-用户在编写自动化规则时可能犯错——写出"当某条件满足时自动开门"这样的危险规则，或者在参数中误写 `locked: false`。AI 在响应用户语音指令时也可能因误解或提示词注入而生成危险命令。**安全不能依赖用户自律或 AI 的可靠性，必须由协议层强制保障。**
+用户在编写自动化规则时可能犯错——写出"当某条件满足时自动开门"这样的危险规则，或者在参数中误写 `locked: false`。**安全不能依赖用户自律或 AI 的可靠性，必须由协议层强制保障。**
 
 #### 标准能力中的 AI 安全策略（`ai_policy`）
 
