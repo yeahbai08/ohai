@@ -2,9 +2,18 @@
 
 本文档定义 OHAI 标准能力库（`ohai.*` 命名空间）的完整规范。标准能力库是中央注册表，设备 Schema 通过键名引用即可使用，无需重复编写内部定义。
 
-关于能力模型的核心概念（State、Command、Event、`affects`、`reports`、`ai_policy`），详见 [设备能力模型](./device-model.md)。关于如何在设备 Schema 中引用标准能力与使用 `overrides` 覆盖约束，详见 [设备 Schema 规范](./schema.md#_2-capability-引用与定义)。
+关于能力模型的核心概念（State、Command、Event、`affects`、`reports`），详见 [设备能力模型](./device-model.md)。关于如何在设备 Schema 中引用标准能力与使用覆盖/排除/扩展机制，详见 [设备 Schema 规范](./schema.md#_2-capability-引用与定义)。关于 AI 安全策略（`ai_policy`），详见 [设备 Schema 规范 - 安全策略声明](./schema.md#_2-4-安全策略声明)。
 
----
+### 为什么需要标准能力库？
+
+OHAI 的[安全能力探测协议](./secure-capability-prob.md)已经能够在没有标准能力库的情况下安全地发现任意设备的能力——即使完全依赖厂商自定义能力（`{vendor}.*`），系统在功能上也可以工作。标准能力库的存在不是功能性的前提，而是在四个方面提供显著的效率增益：
+
+- **探测加速** — 引用标准能力的设备在探测 Phase 0 中一轮即可命中，无需经历完整的多轮探测。
+- **AI 上下文压缩** — Main Agent 只需存储一份 `ohai.switch` 定义即可覆盖家中所有开关设备，而非为每个设备维护一份语义相似但字段名各异的近似模型（`set_on` / `turn_off` / `set_power` …）。
+- **跨设备确定性操作** — "关掉所有灯"可通过确定性查找所有引用了 `ohai.switch` 的设备来执行，无需语义推断"哪些近似模型等价于开关"。
+- **安全策略默认值** — 标准能力库为安全敏感的操作提供推荐的默认 `ai_policy`（如开锁 `confirm`、撤防 `deny`），设备引用标准能力时自动继承，开发者无需从零思考每条命令的安全等级。
+
+标准能力库不追求覆盖所有设备——长尾设备和厂商特有功能通过自定义能力（`{vendor}.*`）实现。标准能力库聚焦于高频通用功能（开关、亮度、温度、锁、传感器等），设备可通过 `exclude` 排除不需要的部分，或通过扩展添加标准未覆盖的功能。
 
 ## 1. 设计原则：禁止自由文本（No Free Text）
 
@@ -20,8 +29,6 @@ OHAI 对设备所有消息中的字符串类型实施 **严格约束** — Schem
 - 时间戳由 Server 在消息接收时自动附加，设备 **不应** 在消息中传递时间戳字符串
 - 人类可读的描述文本（设备名、房间名等）**不属于协议消息**，由 Server 和 Console App 管理
 
----
-
 ## 2. 能力分类索引
 
 | 类别 | 能力 |
@@ -33,10 +40,8 @@ OHAI 对设备所有消息中的字符串类型实施 **严格约束** — Schem
 | [遮蔽与开合](#_7-遮蔽与开合) | `ohai.cover`、`ohai.valve` |
 | [媒体与音频](#_8-媒体与音频) | `ohai.media_player`、`ohai.volume`、`ohai.media_input` |
 | [电力与能源](#_9-电力与能源) | `ohai.power_meter`、`ohai.energy_meter` |
-| [传感器](#_10-传感器) | `ohai.sensor.temperature`、`ohai.sensor.humidity`、`ohai.sensor.illuminance`、`ohai.sensor.pressure`、`ohai.sensor.motion`、`ohai.sensor.occupancy`、`ohai.sensor.contact`、`ohai.sensor.smoke`、`ohai.sensor.co`、`ohai.sensor.water_leak`、`ohai.sensor.pm25`、`ohai.sensor.co2`、`ohai.sensor.tvoc`、`ohai.sensor.noise`、`ohai.sensor.battery`、`ohai.sensor.air_quality` |
+| [传感器](#_10-传感器) | `ohai.sensor.temperature`、`ohai.sensor.humidity`、`ohai.sensor.illuminance`、`ohai.sensor.pressure`、`ohai.sensor.motion`、`ohai.sensor.occupancy`、`ohai.sensor.contact`、`ohai.sensor.smoke`、`ohai.sensor.co`、`ohai.sensor.water_leak`、`ohai.sensor.pm25`、`ohai.sensor.co2`、`ohai.sensor.tvoc`、`ohai.sensor.noise`、`ohai.sensor.battery`、`ohai.sensor.air_quality`、`ohai.sensor.vibration` |
 | [家用电器](#_11-家用电器) | `ohai.robot_vacuum`、`ohai.washer`、`ohai.dryer`、`ohai.camera`、`ohai.irrigation`、`ohai.water_heater` |
-
----
 
 ## 3. 基础控制
 
@@ -52,9 +57,9 @@ OHAI 对设备所有消息中的字符串类型实施 **严格约束** — Schem
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_on` | state_cmd | `[on]` | allow | 设置开关状态 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_on` | state_cmd | `[on]` | 设置开关状态 |
 
 **Events**
 
@@ -75,7 +80,7 @@ ohai.switch:
       cmd_type: state_cmd
       affects: [on]
       description: 设置开关状态
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -100,7 +105,6 @@ ohai.switch:
 ```
 :::
 
----
 
 ### `ohai.button` — 无状态按钮
 
@@ -120,7 +124,7 @@ ohai.switch:
 |---|---|---|
 | `press` | — | 按钮被按下 |
 
-事件参数 `action` 的枚举值覆盖主流交互方式。设备可通过 `overrides` 限制为实际支持的子集。
+事件参数 `action` 的枚举值覆盖主流交互方式。设备可通过覆盖 `enum` 约束限制为实际支持的子集。
 
 ::: details 展开完整定义
 ```yaml
@@ -143,7 +147,6 @@ ohai.button:
 
 `index` 字段用于多按键设备（如 4 键遥控器），标识是哪个按键触发了事件。单按键设备可省略此字段（默认为 1）。
 
----
 
 ### `ohai.child_lock` — 儿童锁
 
@@ -157,11 +160,11 @@ ohai.button:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_child_lock` | state_cmd | `[child_lock]` | 按参数区分 | 设置儿童锁状态 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_child_lock` | state_cmd | `[child_lock]` | 设置儿童锁状态 |
 
-`ai_policy_by_params`：
+**默认安全策略**：
 - `child_lock: true`（开启儿童锁）→ `allow`：自动化可直接激活
 - `child_lock: false`（解除儿童锁）→ `deny`：**禁止自动化解除**，只能由用户手动操作
 
@@ -182,11 +185,6 @@ ohai.child_lock:
       cmd_type: state_cmd
       affects: [child_lock]
       description: 设置儿童锁状态
-      ai_policy_by_params:
-        - when: { child_lock: true }
-          policy: allow
-        - when: { child_lock: false }
-          policy: deny
       params:
         type: object
         properties:
@@ -199,10 +197,17 @@ ohai.child_lock:
           child_lock: { type: boolean }
         additionalProperties: false
   events: {}
+
+# 默认安全策略（独立于能力定义，设备可在 Schema 的 ai_policy 字段中覆盖）
+ai_policy:
+  ohai.child_lock:set_child_lock:
+    - when: { child_lock: true }
+      policy: allow
+    - when: { child_lock: false }
+      policy: deny
 ```
 :::
 
----
 
 ## 4. 照明
 
@@ -216,9 +221,9 @@ ohai.child_lock:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_brightness` | state_cmd | `[brightness]` | allow | 设置亮度（绝对值） |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_brightness` | state_cmd | `[brightness]` | 设置亮度（绝对值） |
 
 ::: details 展开完整定义
 ```yaml
@@ -236,7 +241,7 @@ ohai.brightness:
       cmd_type: state_cmd
       affects: [brightness]
       description: 设置亮度（绝对值）
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -252,7 +257,6 @@ ohai.brightness:
 ```
 :::
 
----
 
 ### `ohai.color_temperature` — 色温控制
 
@@ -264,9 +268,9 @@ ohai.brightness:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_color_temp` | state_cmd | `[color_temp]` | allow | 设置色温 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_color_temp` | state_cmd | `[color_temp]` | 设置色温 |
 
 ::: details 展开完整定义
 ```yaml
@@ -284,7 +288,7 @@ ohai.color_temperature:
       cmd_type: state_cmd
       affects: [color_temp]
       description: 设置色温
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -300,7 +304,6 @@ ohai.color_temperature:
 ```
 :::
 
----
 
 ### `ohai.color` — 颜色控制
 
@@ -313,9 +316,9 @@ ohai.color_temperature:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_color` | state_cmd | `[hue, saturation]` | allow | 设置颜色 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_color` | state_cmd | `[hue, saturation]` | 设置颜色 |
 
 ::: details 展开完整定义
 ```yaml
@@ -338,7 +341,7 @@ ohai.color:
       cmd_type: state_cmd
       affects: [hue, saturation]
       description: 设置颜色
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -356,7 +359,6 @@ ohai.color:
 ```
 :::
 
----
 
 ### `ohai.light_effect` — 灯光效果
 
@@ -366,13 +368,13 @@ ohai.color:
 |---|---|---|---|
 | `effect` | string | enum | 当前灯光效果 |
 
-标准 `effect` 枚举值：`none`、`breathe`、`candle`、`rainbow`、`strobe`、`pulse`、`gradient`、`fireplace`、`aurora`。设备可通过 `overrides` 限制为实际支持的子集。
+标准 `effect` 枚举值：`none`、`breathe`、`candle`、`rainbow`、`strobe`、`pulse`、`gradient`、`fireplace`、`aurora`。设备可通过覆盖 `enum` 约束限制为实际支持的子集。
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_effect` | state_cmd | `[effect]` | allow | 设置灯光效果 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_effect` | state_cmd | `[effect]` | 设置灯光效果 |
 
 ::: details 展开完整定义
 ```yaml
@@ -388,7 +390,7 @@ ohai.light_effect:
       cmd_type: state_cmd
       affects: [effect]
       description: 设置灯光效果
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -404,11 +406,12 @@ ohai.light_effect:
 ```
 :::
 
----
 
 ## 5. 环境控制
 
-### `ohai.thermostat` — 温控
+### `ohai.thermostat` — HVAC 温控
+
+适用于空调、暖气、恒温器、热泵等 HVAC（暖通空调）设备。`mode` 枚举和默认安全策略均围绕室温控制设计——35°C 以上或 5°C 以下触发确认。**不适用于**电水壶、烤箱、恒温酒柜等温度范围和使用场景完全不同的设备，此类设备应使用 `ohai.water_heater` 或厂商自定义能力。
 
 **States**
 
@@ -416,26 +419,34 @@ ohai.light_effect:
 |---|---|---|---|
 | `target_temp` | number | unit: °C | 目标温度 |
 | `current_temp` | number | unit: °C | 当前温度（只读） |
-| `mode` | string | enum: heat, cool, auto, fan_only, dry, off | 工作模式 |
+| `mode` | string | enum: heat, cool, auto, fan_only, dry, off | 工作模式（期望模式） |
+| `hvac_action` | string | enum: heating, cooling, drying, fan_running, idle | 当前实际动作（只读） |
+| `swing_mode` | string | enum: off, vertical, horizontal, both | 摆风模式 |
+| `preset_mode` | string | enum: none, eco, comfort, sleep, away, boost | 预设模式 |
+
+`mode` 是用户期望的工作模式，`hvac_action` 是设备实际正在执行的动作。例如 `mode: cool` 但室温已低于目标温度时，`hvac_action` 为 `idle`。不需要的状态可通过 `exclude` 排除——简单恒温器通常只需 `target_temp` + `current_temp` + `mode`。
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_thermostat` | state_cmd | `[target_temp, mode]` | allow（极端温度 confirm） | 设置温控参数 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_thermostat` | state_cmd | `[target_temp, mode]` | 设置温控参数 |
+| `set_swing_mode` | state_cmd | `[swing_mode]` | 设置摆风模式 |
+| `set_preset_mode` | state_cmd | `[preset_mode]` | 设置预设模式 |
 
-`ai_policy_by_params`：当 `target_temp ≥ 35` 或 `target_temp ≤ 5` 时策略升级为 `confirm`，防止自动化设置极端温度（过高有烫伤风险，过低有冻管风险）。
+**默认安全策略**：当 `target_temp ≥ 35` 或 `target_temp ≤ 5` 时策略升级为 `confirm`，防止自动化设置极端温度（过高有烫伤风险，过低有冻管风险）。
 
 **Events**
 
 | 键名 | reports | 说明 |
 |---|---|---|
 | `temperature_update` | `[current_temp]` | 温度变化上报 |
+| `hvac_action_update` | `[hvac_action]` | 实际动作变更上报 |
 
 ::: details 展开完整定义
 ```yaml
 ohai.thermostat:
-  description: 温控
+  description: HVAC 温控（空调/暖气/恒温器/热泵）
   states:
     target_temp:
       type: number
@@ -448,20 +459,25 @@ ohai.thermostat:
     mode:
       type: string
       enum: [heat, cool, auto, fan_only, dry, off]
-      description: 工作模式
+      description: 工作模式（期望模式）
+    hvac_action:
+      type: string
+      enum: [heating, cooling, drying, fan_running, idle]
+      description: 当前实际动作（只读）
+    swing_mode:
+      type: string
+      enum: [off, vertical, horizontal, both]
+      description: 摆风模式
+    preset_mode:
+      type: string
+      enum: [none, eco, comfort, sleep, away, boost]
+      description: 预设模式
   commands:
     set_thermostat:
       cmd_type: state_cmd
       affects: [target_temp, mode]
       description: 设置温控参数
-      ai_policy: allow
-      ai_policy_by_params:
-        - when:
-            target_temp: { minimum: 35 }
-          policy: confirm
-        - when:
-            target_temp: { maximum: 5 }
-          policy: confirm
+
       params:
         type: object
         properties:
@@ -474,6 +490,38 @@ ohai.thermostat:
           target_temp: { type: number }
           mode: { type: string, enum: [heat, cool, auto, fan_only, dry, off] }
         additionalProperties: false
+    set_swing_mode:
+      cmd_type: state_cmd
+      affects: [swing_mode]
+      description: 设置摆风模式
+
+      params:
+        type: object
+        properties:
+          swing_mode: { type: string, enum: [off, vertical, horizontal, both] }
+        required: [swing_mode]
+        additionalProperties: false
+      result:
+        type: object
+        properties:
+          swing_mode: { type: string, enum: [off, vertical, horizontal, both] }
+        additionalProperties: false
+    set_preset_mode:
+      cmd_type: state_cmd
+      affects: [preset_mode]
+      description: 设置预设模式
+
+      params:
+        type: object
+        properties:
+          preset_mode: { type: string, enum: [none, eco, comfort, sleep, away, boost] }
+        required: [preset_mode]
+        additionalProperties: false
+      result:
+        type: object
+        properties:
+          preset_mode: { type: string, enum: [none, eco, comfort, sleep, away, boost] }
+        additionalProperties: false
   events:
     temperature_update:
       description: 温度变化上报
@@ -484,10 +532,28 @@ ohai.thermostat:
           current_temp: { type: number }
         required: [current_temp]
         additionalProperties: false
+    hvac_action_update:
+      description: 实际动作变更上报
+      reports: [hvac_action]
+      params:
+        type: object
+        properties:
+          hvac_action: { type: string, enum: [heating, cooling, drying, fan_running, idle] }
+        required: [hvac_action]
+        additionalProperties: false
+
+# 默认安全策略
+ai_policy:
+  ohai.thermostat:set_thermostat:
+    - when:
+        target_temp: { minimum: 35 }
+      policy: confirm
+    - when:
+        target_temp: { maximum: 5 }
+      policy: confirm
 ```
 :::
 
----
 
 ### `ohai.fan` — 风扇控制
 
@@ -497,13 +563,15 @@ ohai.thermostat:
 |---|---|---|---|
 | `speed` | integer | 0-100, unit: % | 风扇转速百分比（0 表示关闭） |
 | `oscillating` | boolean | — | 是否摇头 |
+| `direction` | string | enum: forward, reverse | 旋转方向（吊扇正反转） |
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_speed` | state_cmd | `[speed]` | allow | 设置风扇转速 |
-| `set_oscillating` | state_cmd | `[oscillating]` | allow | 设置摇头 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_speed` | state_cmd | `[speed]` | 设置风扇转速 |
+| `set_oscillating` | state_cmd | `[oscillating]` | 设置摇头 |
+| `set_direction` | state_cmd | `[direction]` | 设置旋转方向 |
 
 ::: details 展开完整定义
 ```yaml
@@ -519,12 +587,16 @@ ohai.fan:
     oscillating:
       type: boolean
       description: 是否摇头
+    direction:
+      type: string
+      enum: [forward, reverse]
+      description: 旋转方向（吊扇正反转）
   commands:
     set_speed:
       cmd_type: state_cmd
       affects: [speed]
       description: 设置风扇转速
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -540,7 +612,7 @@ ohai.fan:
       cmd_type: state_cmd
       affects: [oscillating]
       description: 设置摇头
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -552,11 +624,26 @@ ohai.fan:
         properties:
           oscillating: { type: boolean }
         additionalProperties: false
+    set_direction:
+      cmd_type: state_cmd
+      affects: [direction]
+      description: 设置旋转方向
+
+      params:
+        type: object
+        properties:
+          direction: { type: string, enum: [forward, reverse] }
+        required: [direction]
+        additionalProperties: false
+      result:
+        type: object
+        properties:
+          direction: { type: string, enum: [forward, reverse] }
+        additionalProperties: false
   events: {}
 ```
 :::
 
----
 
 ### `ohai.humidity_control` — 湿度控制
 
@@ -571,9 +658,9 @@ ohai.fan:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_humidity_control` | state_cmd | `[target_humidity, mode]` | allow | 设置湿度控制参数 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_humidity_control` | state_cmd | `[target_humidity, mode]` | 设置湿度控制参数 |
 
 ::: details 展开完整定义
 ```yaml
@@ -595,7 +682,7 @@ ohai.humidity_control:
       cmd_type: state_cmd
       affects: [target_humidity, mode]
       description: 设置湿度控制参数
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -612,7 +699,6 @@ ohai.humidity_control:
 ```
 :::
 
----
 
 ### `ohai.air_purifier` — 空气净化
 
@@ -626,10 +712,10 @@ ohai.humidity_control:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_mode` | state_cmd | `[mode]` | allow | 设置工作模式 |
-| `set_fan_level` | state_cmd | `[fan_level]` | allow | 设置风量等级 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_mode` | state_cmd | `[mode]` | 设置工作模式 |
+| `set_fan_level` | state_cmd | `[fan_level]` | 设置风量等级 |
 
 **Events**
 
@@ -662,7 +748,7 @@ ohai.air_purifier:
       cmd_type: state_cmd
       affects: [mode]
       description: 设置工作模式
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -678,7 +764,7 @@ ohai.air_purifier:
       cmd_type: state_cmd
       affects: [fan_level]
       description: 设置风量等级
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -703,12 +789,11 @@ ohai.air_purifier:
 ```
 :::
 
----
 
 ## 6. 安全与门禁
 
 ::: warning 自动化安全策略
-本类别中的能力涉及人身安全和财产安全，其命令的 `ai_policy` 经过特别设计。解锁门锁、撤防报警、开启车库门等操作被标记为 `deny` 或 `confirm`，自动化引擎无法绕过。
+本类别中的能力涉及人身安全和财产安全，其默认安全策略（`ai_policy`）经过特别设计，定义在各能力的独立 `ai_policy` 区段中。解锁门锁、撤防报警、开启车库门等操作被标记为 `deny` 或 `confirm`，自动化引擎无法绕过。
 :::
 
 ### `ohai.lock` — 门锁
@@ -721,11 +806,11 @@ ohai.air_purifier:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_locked` | state_cmd | `[locked]` | 按参数区分 | 设置锁定状态 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_locked` | state_cmd | `[locked]` | 设置锁定状态 |
 
-`ai_policy_by_params`：
+**默认安全策略**：
 - `locked: true`（锁门）→ `allow`：自动化可直接执行
 - `locked: false`（开锁）→ `confirm`：自动化开锁需**用户确认**（厂商/用户可通过覆盖升级到 deny）
 
@@ -749,11 +834,6 @@ ohai.lock:
       cmd_type: state_cmd
       affects: [locked]
       description: 设置锁定状态
-      ai_policy_by_params:
-        - when: { locked: true }
-          policy: allow
-        - when: { locked: false }
-          policy: confirm
       params:
         type: object
         properties:
@@ -782,10 +862,17 @@ ohai.lock:
         type: object
         properties: {}
         additionalProperties: false
+
+# 默认安全策略
+ai_policy:
+  ohai.lock:set_locked:
+    - when: { locked: true }
+      policy: allow
+    - when: { locked: false }
+      policy: confirm
 ```
 :::
 
----
 
 ### `ohai.alarm` — 安防报警
 
@@ -800,16 +887,16 @@ ohai.lock:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_mode` | state_cmd | `[mode]` | 按参数区分 | 设置布防模式 |
-| `dismiss_alarm` | state_cmd | `[triggered]` | deny | 解除触发状态 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_mode` | state_cmd | `[mode]` | 设置布防模式 |
+| `dismiss_alarm` | state_cmd | `[triggered]` | 解除触发状态 |
 
-`set_mode` 的 `ai_policy_by_params`：
+`set_mode` 的**默认安全策略**：
 - `mode: disarmed`（撤防）→ `deny`：**禁止自动化撤防**
 - 其他布防模式 → `allow`：自动化可布防（如离家自动布防）
 
-`dismiss_alarm`：`deny`——报警解除**必须由用户手动操作**。
+`dismiss_alarm`：**默认安全策略** `deny`——报警解除**必须由用户手动操作**。
 
 **Events**
 
@@ -834,9 +921,6 @@ ohai.alarm:
       cmd_type: state_cmd
       affects: [mode]
       description: 设置布防模式
-      ai_policy_by_params:
-        - when: { mode: disarmed }
-          policy: deny
       params:
         type: object
         properties:
@@ -852,7 +936,6 @@ ohai.alarm:
       cmd_type: state_cmd
       affects: [triggered]
       description: 解除触发状态
-      ai_policy: deny
       params:
         type: object
         properties:
@@ -874,10 +957,16 @@ ohai.alarm:
           triggered: { type: boolean }
         required: [triggered]
         additionalProperties: false
+
+# 默认安全策略
+ai_policy:
+  ohai.alarm:set_mode:
+    - when: { mode: disarmed }
+      policy: deny
+  ohai.alarm:dismiss_alarm: deny
 ```
 :::
 
----
 
 ### `ohai.garage_door` — 车库门
 
@@ -890,12 +979,12 @@ ohai.alarm:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_position` | state_cmd | `[position]` | 按参数区分 | 设置门位置 |
-| `stop` | instant_cmd | — | allow | 紧急停止 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_position` | state_cmd | `[position]` | 设置门位置 |
+| `stop` | instant_cmd | — | 紧急停止 |
 
-`set_position` 的 `ai_policy_by_params`：
+`set_position` 的**默认安全策略**：
 - `position: 0`（关门）→ `allow`：自动化可直接关门
 - `position ≥ 1`（开门）→ `confirm`：自动化开门需用户确认
 
@@ -925,12 +1014,6 @@ ohai.garage_door:
       cmd_type: state_cmd
       affects: [position]
       description: 设置门位置
-      ai_policy_by_params:
-        - when: { position: 0 }
-          policy: allow
-        - when:
-            position: { minimum: 1 }
-          policy: confirm
       params:
         type: object
         properties:
@@ -945,7 +1028,7 @@ ohai.garage_door:
     stop:
       cmd_type: instant_cmd
       description: 紧急停止门运动
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -967,10 +1050,18 @@ ohai.garage_door:
           moving: { type: boolean }
         required: [position, moving]
         additionalProperties: false
+
+# 默认安全策略
+ai_policy:
+  ohai.garage_door:set_position:
+    - when: { position: 0 }
+      policy: allow
+    - when:
+        position: { minimum: 1 }
+      policy: confirm
 ```
 :::
 
----
 
 ### `ohai.doorbell` — 门铃
 
@@ -1006,7 +1097,6 @@ ohai.doorbell:
 ```
 :::
 
----
 
 ### `ohai.siren` — 警笛/蜂鸣器
 
@@ -1021,11 +1111,11 @@ ohai.doorbell:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_siren` | state_cmd | `[active, tone]` | allow | 控制警笛 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_siren` | state_cmd | `[active, tone]` | 控制警笛 |
 
-`ai_policy: allow`——警笛触发是自动化的核心场景（烟雾传感器 → 触发警笛）。
+**默认安全策略**：`allow`——警笛触发是自动化的核心场景（烟雾传感器 → 触发警笛）。
 
 **Events**
 
@@ -1048,7 +1138,7 @@ ohai.siren:
       cmd_type: state_cmd
       affects: [active, tone]
       description: 控制警笛
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -1066,7 +1156,6 @@ ohai.siren:
 ```
 :::
 
----
 
 ## 7. 遮蔽与开合
 
@@ -1078,20 +1167,22 @@ ohai.siren:
 |---|---|---|---|
 | `position` | integer | 0-100, unit: %（0=完全关闭, 100=完全打开） | 遮蔽位置 |
 | `tilt` | integer | 0-100, unit: %（0=水平闭合, 100=垂直全开） | 叶片角度（百叶窗） |
+| `moving_state` | string | enum: opening, closing, stopped | 当前运动状态 |
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_position` | state_cmd | `[position]` | allow | 设置遮蔽位置 |
-| `set_tilt` | state_cmd | `[tilt]` | allow | 设置叶片角度 |
-| `stop` | instant_cmd | — | allow | 停止运动 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_position` | state_cmd | `[position]` | 设置遮蔽位置 |
+| `set_tilt` | state_cmd | `[tilt]` | 设置叶片角度 |
+| `stop` | instant_cmd | — | 停止运动 |
 
 **Events**
 
 | 键名 | reports | 说明 |
 |---|---|---|
-| `position_changed` | `[position]` | 位置变更（物理操作/遥控器） |
+| `position_changed` | `[position, moving_state]` | 位置变更（物理操作/遥控器） |
+| `obstruction_detected` | — | 检测到障碍物 |
 
 ::: details 展开完整定义
 ```yaml
@@ -1110,12 +1201,16 @@ ohai.cover:
       maximum: 100
       unit: "%"
       description: 叶片角度（0=水平闭合, 100=垂直全开）
+    moving_state:
+      type: string
+      enum: [opening, closing, stopped]
+      description: 当前运动状态
   commands:
     set_position:
       cmd_type: state_cmd
       affects: [position]
       description: 设置遮蔽位置
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -1131,7 +1226,7 @@ ohai.cover:
       cmd_type: state_cmd
       affects: [tilt]
       description: 设置叶片角度
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -1146,7 +1241,7 @@ ohai.cover:
     stop:
       cmd_type: instant_cmd
       description: 停止运动
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -1154,17 +1249,23 @@ ohai.cover:
   events:
     position_changed:
       description: 位置变更（物理操作/遥控器）
-      reports: [position]
+      reports: [position, moving_state]
       params:
         type: object
         properties:
           position: { type: integer }
-        required: [position]
+          moving_state: { type: string, enum: [opening, closing, stopped] }
+        required: [position, moving_state]
+        additionalProperties: false
+    obstruction_detected:
+      description: 检测到障碍物
+      params:
+        type: object
+        properties: {}
         additionalProperties: false
 ```
 :::
 
----
 
 ### `ohai.valve` — 阀门控制
 
@@ -1178,11 +1279,11 @@ ohai.cover:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_open` | state_cmd | `[open]` | 按参数区分 | 控制阀门开合 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_open` | state_cmd | `[open]` | 控制阀门开合 |
 
-`ai_policy_by_params`：
+**默认安全策略**：
 - `open: true`（开阀）→ `confirm`：自动化开阀需用户确认（防止水漫金山）
 - `open: false`（关阀）→ `allow`：自动化可直接关阀（紧急关断场景）
 
@@ -1205,11 +1306,6 @@ ohai.valve:
       cmd_type: state_cmd
       affects: [open]
       description: 控制阀门开合
-      ai_policy_by_params:
-        - when: { open: true }
-          policy: confirm
-        - when: { open: false }
-          policy: allow
       params:
         type: object
         properties:
@@ -1231,10 +1327,17 @@ ohai.valve:
           open: { type: boolean }
         required: [open]
         additionalProperties: false
+
+# 默认安全策略
+ai_policy:
+  ohai.valve:set_open:
+    - when: { open: true }
+      policy: confirm
+    - when: { open: false }
+      policy: allow
 ```
 :::
 
----
 
 ## 8. 媒体与音频
 
@@ -1250,13 +1353,13 @@ ohai.valve:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `play` | instant_cmd | — | allow | 开始/恢复播放 |
-| `pause` | instant_cmd | — | allow | 暂停播放 |
-| `stop` | instant_cmd | — | allow | 停止播放 |
-| `next_track` | instant_cmd | — | allow | 下一曲 |
-| `previous_track` | instant_cmd | — | allow | 上一曲 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `play` | instant_cmd | — | 开始/恢复播放 |
+| `pause` | instant_cmd | — | 暂停播放 |
+| `stop` | instant_cmd | — | 停止播放 |
+| `next_track` | instant_cmd | — | 下一曲 |
+| `previous_track` | instant_cmd | — | 上一曲 |
 
 **Events**
 
@@ -1277,7 +1380,7 @@ ohai.media_player:
     play:
       cmd_type: instant_cmd
       description: 开始或恢复播放
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -1285,7 +1388,7 @@ ohai.media_player:
     pause:
       cmd_type: instant_cmd
       description: 暂停播放
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -1293,7 +1396,7 @@ ohai.media_player:
     stop:
       cmd_type: instant_cmd
       description: 停止播放
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -1301,7 +1404,7 @@ ohai.media_player:
     next_track:
       cmd_type: instant_cmd
       description: 下一曲
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -1309,7 +1412,7 @@ ohai.media_player:
     previous_track:
       cmd_type: instant_cmd
       description: 上一曲
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -1327,7 +1430,6 @@ ohai.media_player:
 ```
 :::
 
----
 
 ### `ohai.volume` — 音量控制
 
@@ -1340,10 +1442,10 @@ ohai.media_player:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_volume` | state_cmd | `[volume]` | allow | 设置音量 |
-| `set_muted` | state_cmd | `[muted]` | allow | 设置静音 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_volume` | state_cmd | `[volume]` | 设置音量 |
+| `set_muted` | state_cmd | `[muted]` | 设置静音 |
 
 ::: details 展开完整定义
 ```yaml
@@ -1364,7 +1466,7 @@ ohai.volume:
       cmd_type: state_cmd
       affects: [volume]
       description: 设置音量
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -1380,7 +1482,7 @@ ohai.volume:
       cmd_type: state_cmd
       affects: [muted]
       description: 设置静音
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -1396,11 +1498,10 @@ ohai.volume:
 ```
 :::
 
----
 
 ### `ohai.media_input` — 输入源选择
 
-适用于电视、AV 功放等。设备可通过 `overrides` 将 `source` 的 `enum` 限制为实际支持的输入源子集。
+适用于电视、AV 功放等。设备可通过覆盖 `enum` 约束将 `source` 限制为实际支持的输入源子集。
 
 **States**
 
@@ -1412,9 +1513,9 @@ ohai.volume:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_source` | state_cmd | `[source]` | allow | 切换输入源 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_source` | state_cmd | `[source]` | 切换输入源 |
 
 ::: details 展开完整定义
 ```yaml
@@ -1430,7 +1531,7 @@ ohai.media_input:
       cmd_type: state_cmd
       affects: [source]
       description: 切换输入源
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -1446,7 +1547,6 @@ ohai.media_input:
 ```
 :::
 
----
 
 ## 9. 电力与能源
 
@@ -1505,7 +1605,6 @@ ohai.power_meter:
 ```
 :::
 
----
 
 ### `ohai.energy_meter` — 能耗统计
 
@@ -1550,7 +1649,6 @@ ohai.energy_meter:
 ```
 :::
 
----
 
 ## 10. 传感器
 
@@ -1566,7 +1664,6 @@ ohai.energy_meter:
 |---|---|---|
 | `temperature_update` | `[temperature]` | 温度变化上报 |
 
----
 
 ### `ohai.sensor.humidity` — 湿度传感器
 
@@ -1578,7 +1675,6 @@ ohai.energy_meter:
 |---|---|---|
 | `humidity_update` | `[humidity]` | 湿度变化上报 |
 
----
 
 ### `ohai.sensor.illuminance` — 光照传感器
 
@@ -1590,7 +1686,6 @@ ohai.energy_meter:
 |---|---|---|
 | `illuminance_update` | `[illuminance]` | 光照变化上报 |
 
----
 
 ### `ohai.sensor.pressure` — 气压传感器
 
@@ -1602,7 +1697,6 @@ ohai.energy_meter:
 |---|---|---|
 | `pressure_update` | `[pressure]` | 气压变化上报 |
 
----
 
 ### `ohai.sensor.motion` — 运动检测
 
@@ -1614,7 +1708,6 @@ ohai.energy_meter:
 |---|---|---|
 | `motion_update` | `[motion_detected]` | 运动状态变更 |
 
----
 
 ### `ohai.sensor.occupancy` — 人员存在检测
 
@@ -1628,7 +1721,6 @@ ohai.energy_meter:
 |---|---|---|
 | `occupancy_update` | `[occupied]` | 存在状态变更 |
 
----
 
 ### `ohai.sensor.contact` — 门窗开合
 
@@ -1640,7 +1732,6 @@ ohai.energy_meter:
 |---|---|---|
 | `contact_changed` | `[contact]` | 开合状态变更 |
 
----
 
 ### `ohai.sensor.smoke` — 烟雾检测
 
@@ -1653,7 +1744,6 @@ ohai.energy_meter:
 | `smoke_update` | `[smoke_detected]` | 烟雾状态变更 |
 | `smoke_alarm` | — | 烟雾报警（高优先级事件） |
 
----
 
 ### `ohai.sensor.co` — 一氧化碳检测
 
@@ -1666,7 +1756,6 @@ ohai.energy_meter:
 | `co_update` | `[co_detected]` | CO 检测状态变更 |
 | `co_alarm` | — | CO 报警（高优先级事件） |
 
----
 
 ### `ohai.sensor.water_leak` — 漏水检测
 
@@ -1678,7 +1767,6 @@ ohai.energy_meter:
 |---|---|---|
 | `leak_update` | `[leak_detected]` | 漏水状态变更 |
 
----
 
 ### `ohai.sensor.pm25` — PM2.5 传感器
 
@@ -1690,7 +1778,6 @@ ohai.energy_meter:
 |---|---|---|
 | `pm25_update` | `[pm25]` | PM2.5 数据更新 |
 
----
 
 ### `ohai.sensor.co2` — 二氧化碳传感器
 
@@ -1702,7 +1789,6 @@ ohai.energy_meter:
 |---|---|---|
 | `co2_update` | `[co2]` | CO₂ 浓度更新 |
 
----
 
 ### `ohai.sensor.tvoc` — TVOC 传感器
 
@@ -1714,7 +1800,6 @@ ohai.energy_meter:
 |---|---|---|
 | `tvoc_update` | `[tvoc]` | TVOC 浓度更新 |
 
----
 
 ### `ohai.sensor.noise` — 噪声传感器
 
@@ -1726,7 +1811,6 @@ ohai.energy_meter:
 |---|---|---|
 | `noise_update` | `[noise_level]` | 噪声数据更新 |
 
----
 
 ### `ohai.sensor.battery` — 电池电量
 
@@ -1738,7 +1822,6 @@ ohai.energy_meter:
 |---|---|---|
 | `low_battery` | `[battery_level]` | 电量不足告警 |
 
----
 
 ### `ohai.sensor.air_quality` — 综合空气质量
 
@@ -1753,7 +1836,19 @@ ohai.energy_meter:
 |---|---|---|
 | `aqi_update` | `[aqi, level]` | 空气质量更新 |
 
----
+
+### `ohai.sensor.vibration` — 振动检测
+
+适用于窗户振动传感器、安防振动检测等。
+
+| States | 类型 |
+|---|---|
+| `vibration_detected` | boolean |
+
+| Events | reports | 说明 |
+|---|---|---|
+| `vibration_update` | `[vibration_detected]` | 振动状态变更 |
+
 
 ::: details 展开传感器系列完整定义
 ```yaml
@@ -2076,10 +2171,27 @@ ohai.sensor.air_quality:
           level: { type: string, enum: [good, moderate, unhealthy_sensitive, unhealthy, very_unhealthy, hazardous] }
         required: [aqi, level]
         additionalProperties: false
+
+ohai.sensor.vibration:
+  description: 振动检测传感器
+  states:
+    vibration_detected:
+      type: boolean
+      description: 是否检测到振动
+  commands: {}
+  events:
+    vibration_update:
+      description: 振动状态变更
+      reports: [vibration_detected]
+      params:
+        type: object
+        properties:
+          vibration_detected: { type: boolean }
+        required: [vibration_detected]
+        additionalProperties: false
 ```
 :::
 
----
 
 ## 11. 家用电器
 
@@ -2096,13 +2208,13 @@ ohai.sensor.air_quality:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `start_clean` | once_cmd | — | allow | 开始清扫 |
-| `pause` | instant_cmd | — | allow | 暂停清扫 |
-| `resume` | instant_cmd | — | allow | 恢复清扫 |
-| `return_home` | instant_cmd | — | allow | 返回充电座 |
-| `set_clean_mode` | state_cmd | `[clean_mode]` | allow | 设置清扫模式 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `start_clean` | once_cmd | — | 开始清扫 |
+| `pause` | instant_cmd | — | 暂停清扫 |
+| `resume` | instant_cmd | — | 恢复清扫 |
+| `return_home` | instant_cmd | — | 返回充电座 |
+| `set_clean_mode` | state_cmd | `[clean_mode]` | 设置清扫模式 |
 
 **Events**
 
@@ -2130,7 +2242,7 @@ ohai.robot_vacuum:
     start_clean:
       cmd_type: once_cmd
       description: 开始清扫
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2142,7 +2254,7 @@ ohai.robot_vacuum:
     pause:
       cmd_type: instant_cmd
       description: 暂停清扫
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2150,7 +2262,7 @@ ohai.robot_vacuum:
     resume:
       cmd_type: instant_cmd
       description: 恢复清扫
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2158,7 +2270,7 @@ ohai.robot_vacuum:
     return_home:
       cmd_type: instant_cmd
       description: 返回充电座
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2167,7 +2279,7 @@ ohai.robot_vacuum:
       cmd_type: state_cmd
       affects: [clean_mode]
       description: 设置清扫模式
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -2213,7 +2325,6 @@ ohai.robot_vacuum:
 ```
 :::
 
----
 
 ### `ohai.washer` — 洗衣机
 
@@ -2226,15 +2337,15 @@ ohai.robot_vacuum:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `start_wash` | once_cmd | — | allow | 开始洗涤 |
-| `pause` | instant_cmd | — | allow | 暂停 |
-| `resume` | instant_cmd | — | allow | 恢复 |
-| `cancel` | instant_cmd | — | allow | 取消当前程序 |
-| `set_program` | state_cmd | `[program]` | allow | 设置洗涤程序 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `start_wash` | once_cmd | — | 开始洗涤 |
+| `pause` | instant_cmd | — | 暂停 |
+| `resume` | instant_cmd | — | 恢复 |
+| `cancel` | instant_cmd | — | 取消当前程序 |
+| `set_program` | state_cmd | `[program]` | 设置洗涤程序 |
 
-`start_wash`：`ai_policy: allow`——定时洗涤是常见自动化场景，设备安全由硬件联锁机制保障。用户可通过设备设置升级策略。
+`start_wash`：**默认安全策略** `allow`——定时洗涤是常见自动化场景，设备安全由硬件联锁机制保障。用户可通过设备设置升级策略。
 
 **Events**
 
@@ -2260,7 +2371,7 @@ ohai.washer:
     start_wash:
       cmd_type: once_cmd
       description: 开始洗涤
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2272,7 +2383,7 @@ ohai.washer:
     pause:
       cmd_type: instant_cmd
       description: 暂停
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2280,7 +2391,7 @@ ohai.washer:
     resume:
       cmd_type: instant_cmd
       description: 恢复
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2288,7 +2399,7 @@ ohai.washer:
     cancel:
       cmd_type: instant_cmd
       description: 取消当前程序
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2297,7 +2408,7 @@ ohai.washer:
       cmd_type: state_cmd
       affects: [program]
       description: 设置洗涤程序
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -2331,7 +2442,6 @@ ohai.washer:
 ```
 :::
 
----
 
 ### `ohai.dryer` — 干衣机
 
@@ -2344,15 +2454,15 @@ ohai.washer:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `start_dry` | once_cmd | — | allow | 开始烘干 |
-| `pause` | instant_cmd | — | allow | 暂停 |
-| `resume` | instant_cmd | — | allow | 恢复 |
-| `cancel` | instant_cmd | — | allow | 取消当前程序 |
-| `set_program` | state_cmd | `[program]` | allow | 设置烘干程序 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `start_dry` | once_cmd | — | 开始烘干 |
+| `pause` | instant_cmd | — | 暂停 |
+| `resume` | instant_cmd | — | 恢复 |
+| `cancel` | instant_cmd | — | 取消当前程序 |
+| `set_program` | state_cmd | `[program]` | 设置烘干程序 |
 
-`start_dry`：`ai_policy: allow`——定时烘干是常见自动化场景，设备安全由硬件联锁机制保障。用户可通过设备设置升级策略。
+`start_dry`：**默认安全策略** `allow`——定时烘干是常见自动化场景，设备安全由硬件联锁机制保障。用户可通过设备设置升级策略。
 
 **Events**
 
@@ -2379,7 +2489,7 @@ ohai.dryer:
     start_dry:
       cmd_type: once_cmd
       description: 开始烘干
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2391,7 +2501,7 @@ ohai.dryer:
     pause:
       cmd_type: instant_cmd
       description: 暂停
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2399,7 +2509,7 @@ ohai.dryer:
     resume:
       cmd_type: instant_cmd
       description: 恢复
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2407,7 +2517,7 @@ ohai.dryer:
     cancel:
       cmd_type: instant_cmd
       description: 取消当前程序
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2416,7 +2526,7 @@ ohai.dryer:
       cmd_type: state_cmd
       affects: [program]
       description: 设置烘干程序
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -2456,26 +2566,34 @@ ohai.dryer:
 ```
 :::
 
----
 
 ### `ohai.camera` — 摄像头
 
-基础摄像头控制。图像/视频数据通过带外通道（HTTP/RTSP）传输，不走 MQTT 协议消息。视频门铃通过组合 `ohai.camera` + `ohai.doorbell` 实现。
+摄像头控制。图像/视频数据通过带外通道（HTTP/RTSP）传输，不走 MQTT 协议消息。视频门铃通过组合 `ohai.camera` + `ohai.doorbell` 实现。
 
 **States**
 
 | 键名 | 类型 | 说明 |
 |---|---|---|
 | `privacy_mode` | boolean | 隐私模式（镜头遮蔽/关闭） |
+| `night_vision` | boolean | 夜视模式 |
+| `recording` | boolean | 是否正在录制 |
+| `audio_enabled` | boolean | 是否开启音频采集 |
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_privacy_mode` | state_cmd | `[privacy_mode]` | allow | 设置隐私模式 |
-| `take_snapshot` | once_cmd | — | confirm | 拍摄快照 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_privacy_mode` | state_cmd | `[privacy_mode]` | 设置隐私模式 |
+| `set_night_vision` | state_cmd | `[night_vision]` | 设置夜视模式 |
+| `set_recording` | state_cmd | `[recording]` | 设置录制开关 |
+| `set_audio_enabled` | state_cmd | `[audio_enabled]` | 设置音频采集开关 |
+| `take_snapshot` | once_cmd | — | 拍摄快照 |
 
-`take_snapshot`：`ai_policy: confirm`——涉及隐私，自动化拍照需用户确认。
+**默认安全策略**：
+- `take_snapshot` → `confirm`：涉及隐私，自动化拍照需用户确认
+- `set_recording` → `confirm`：涉及隐私，自动化开启录制需用户确认
+- `set_audio_enabled` → `confirm`：涉及隐私，自动化开启音频采集需用户确认
 
 **Events**
 
@@ -2484,17 +2602,26 @@ ohai.dryer:
 ::: details 展开完整定义
 ```yaml
 ohai.camera:
-  description: 摄像头基础控制
+  description: 摄像头控制
   states:
     privacy_mode:
       type: boolean
       description: 隐私模式（镜头遮蔽/关闭）
+    night_vision:
+      type: boolean
+      description: 夜视模式
+    recording:
+      type: boolean
+      description: 是否正在录制
+    audio_enabled:
+      type: boolean
+      description: 是否开启音频采集
   commands:
     set_privacy_mode:
       cmd_type: state_cmd
       affects: [privacy_mode]
       description: 设置隐私模式
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -2506,10 +2633,57 @@ ohai.camera:
         properties:
           privacy_mode: { type: boolean }
         additionalProperties: false
+    set_night_vision:
+      cmd_type: state_cmd
+      affects: [night_vision]
+      description: 设置夜视模式
+
+      params:
+        type: object
+        properties:
+          night_vision: { type: boolean }
+        required: [night_vision]
+        additionalProperties: false
+      result:
+        type: object
+        properties:
+          night_vision: { type: boolean }
+        additionalProperties: false
+    set_recording:
+      cmd_type: state_cmd
+      affects: [recording]
+      description: 设置录制开关
+
+      params:
+        type: object
+        properties:
+          recording: { type: boolean }
+        required: [recording]
+        additionalProperties: false
+      result:
+        type: object
+        properties:
+          recording: { type: boolean }
+        additionalProperties: false
+    set_audio_enabled:
+      cmd_type: state_cmd
+      affects: [audio_enabled]
+      description: 设置音频采集开关
+
+      params:
+        type: object
+        properties:
+          audio_enabled: { type: boolean }
+        required: [audio_enabled]
+        additionalProperties: false
+      result:
+        type: object
+        properties:
+          audio_enabled: { type: boolean }
+        additionalProperties: false
     take_snapshot:
       cmd_type: once_cmd
       description: 拍摄快照
-      ai_policy: confirm
       params:
         type: object
         properties: {}
@@ -2519,10 +2693,15 @@ ohai.camera:
         properties: {}
         additionalProperties: false
   events: {}
+
+# 默认安全策略
+ai_policy:
+  ohai.camera:take_snapshot: confirm
+  ohai.camera:set_recording: confirm
+  ohai.camera:set_audio_enabled: confirm
 ```
 :::
 
----
 
 ### `ohai.irrigation` — 灌溉控制
 
@@ -2534,12 +2713,12 @@ ohai.camera:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `start_irrigation` | once_cmd | — | allow | 开始灌溉 |
-| `stop_irrigation` | instant_cmd | — | allow | 停止灌溉 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `start_irrigation` | once_cmd | — | 开始灌溉 |
+| `stop_irrigation` | instant_cmd | — | 停止灌溉 |
 
-`start_irrigation`：`ai_policy: allow`——灌溉自动化是核心使用场景（定时浇灌、土壤湿度触发等）。
+`start_irrigation`：**默认安全策略** `allow`——灌溉自动化是核心使用场景（定时浇灌、土壤湿度触发等）。
 
 **Events**
 
@@ -2560,7 +2739,7 @@ ohai.irrigation:
     start_irrigation:
       cmd_type: once_cmd
       description: 开始灌溉
-      ai_policy: allow
+
       params:
         type: object
         properties:
@@ -2574,7 +2753,7 @@ ohai.irrigation:
     stop_irrigation:
       cmd_type: instant_cmd
       description: 停止灌溉
-      ai_policy: allow
+
       params:
         type: object
         properties: {}
@@ -2598,7 +2777,6 @@ ohai.irrigation:
 ```
 :::
 
----
 
 ### `ohai.water_heater` — 热水器
 
@@ -2616,11 +2794,11 @@ ohai.irrigation:
 
 **Commands**
 
-| 键名 | 类型 | affects | ai_policy | 说明 |
-|---|---|---|---|---|
-| `set_water_heater` | state_cmd | `[heating_mode, target_temp]` | allow（极端高温 confirm） | 设置加热参数 |
+| 键名 | 类型 | affects | 说明 |
+|---|---|---|---|
+| `set_water_heater` | state_cmd | `[heating_mode, target_temp]` | 设置加热参数 |
 
-`ai_policy_by_params`：当 `target_temp ≥ 55` 时策略升级为 `confirm`，防止自动化设置过高水温（烫伤风险）。
+**默认安全策略**：当 `target_temp ≥ 55` 时策略升级为 `confirm`，防止自动化设置过高水温（烫伤风险）。
 
 **Events**
 
@@ -2657,11 +2835,7 @@ ohai.water_heater:
       cmd_type: state_cmd
       affects: [heating_mode, target_temp]
       description: 设置加热参数
-      ai_policy: allow
-      ai_policy_by_params:
-        - when:
-            target_temp: { minimum: 55 }
-          policy: confirm
+
       params:
         type: object
         properties:
@@ -2693,36 +2867,43 @@ ohai.water_heater:
           status: { type: string, enum: [idle, heating, keeping, complete] }
         required: [status]
         additionalProperties: false
+
+# 默认安全策略
+ai_policy:
+  ohai.water_heater:set_water_heater:
+    - when:
+        target_temp: { minimum: 55 }
+      policy: confirm
 ```
 :::
 
----
 
 ## 附录 B：ai_policy 速查表
 
-以下列出所有标准能力中**非默认（非 allow）** 的自动化安全策略：
+以下列出所有标准能力中**非默认（非 allow）** 的标准默认策略（设备可在 Schema 的 `ai_policy` 字段中覆盖）：
 
 | 能力 | 命令 | 参数条件 | 策略 | 原因 |
 |---|---|---|---|---|
-| `ohai.lock` | `set_locked` | `locked: true` | allow | 锁门安全 |
+| `ohai.lock` | `set_locked` | `locked: true` | 锁门安全 |
 | `ohai.lock` | `set_locked` | `locked: false` | **confirm** | 自动化开锁需确认（厂商/用户可升级到 deny） |
 | `ohai.alarm` | `set_mode` | `mode: disarmed` | **deny** | 禁止自动化撤防 |
-| `ohai.alarm` | `set_mode` | 其他模式 | allow | 自动化可布防 |
+| `ohai.alarm` | `set_mode` | 其他模式 | 自动化可布防 |
 | `ohai.alarm` | `dismiss_alarm` | — | **deny** | 报警解除必须手动 |
-| `ohai.garage_door` | `set_position` | `position: 0` | allow | 关门安全 |
+| `ohai.garage_door` | `set_position` | `position: 0` | 关门安全 |
 | `ohai.garage_door` | `set_position` | `position ≥ 1` | **confirm** | 开门需确认 |
 | `ohai.valve` | `set_open` | `open: true` | **confirm** | 开阀需确认（防水害） |
-| `ohai.valve` | `set_open` | `open: false` | allow | 关阀安全（紧急关断） |
+| `ohai.valve` | `set_open` | `open: false` | 关阀安全（紧急关断） |
 | `ohai.thermostat` | `set_thermostat` | `target_temp ≥ 35` | **confirm** | 极端高温需确认 |
 | `ohai.thermostat` | `set_thermostat` | `target_temp ≤ 5` | **confirm** | 极端低温需确认（冻管风险） |
 | `ohai.camera` | `take_snapshot` | — | **confirm** | 涉及隐私 |
-| `ohai.child_lock` | `set_child_lock` | `child_lock: true` | allow | 激活儿童锁安全 |
+| `ohai.camera` | `set_recording` | — | **confirm** | 涉及隐私 |
+| `ohai.camera` | `set_audio_enabled` | — | **confirm** | 涉及隐私 |
+| `ohai.child_lock` | `set_child_lock` | `child_lock: true` | 激活儿童锁安全 |
 | `ohai.child_lock` | `set_child_lock` | `child_lock: false` | **deny** | 禁止自动化解除儿童锁 |
 | `ohai.water_heater` | `set_water_heater` | `target_temp ≥ 55` | **confirm** | 高水温需确认（烫伤风险） |
 
 所有其他命令的默认策略为 `allow`。
 
----
 
 ## 附录 C：标准能力与设备类型映射
 
@@ -2772,3 +2953,4 @@ ohai.water_heater:
 | 噪声传感器 | `ohai.sensor.noise` + `ohai.sensor.battery` |
 | 无线按钮/场景遥控器 | `ohai.button` + `ohai.sensor.battery` |
 | 独立警笛 | `ohai.siren` |
+| 振动传感器 | `ohai.sensor.vibration` + `ohai.sensor.battery` |

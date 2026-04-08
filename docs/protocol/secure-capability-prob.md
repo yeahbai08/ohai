@@ -110,7 +110,7 @@ OHAI 设备的能力有三种来源，探测效率依次递减：
 | 来源 | 探测策略 | 效率 |
 |---|---|---|
 | **直接引用标准能力**（`ohai.*`） | Main Agent 直接从标准能力库加载完整定义，仅需确认设备是否具备 | 极高 — 无需探测内部结构 |
-| **覆盖标准能力**（`ohai.*` + `overrides`） | 加载标准定义后，仅需探测被覆盖的约束（如亮度范围、策略升级） | 高 — 仅探测差异部分 |
+| **微调标准能力**（`ohai.*` + 覆盖/排除/扩展） | 加载标准定义后，探测排除项、约束覆盖和扩展字段 | 高 — 仅探测差异部分 |
 | **完全自定义能力**（`{vendor}.*`） | 需要从零探测 States、Commands、Events 的完整结构 | 中 — 需要多轮探测 |
 
 探测算法的核心优化是：**优先匹配标准能力，仅对标准能力未覆盖的部分进行深度探测**。
@@ -146,7 +146,20 @@ Main Agent 根据用户提供的设备描述，从标准能力库的分类索引
 
 #### Phase 1：标准能力约束探测
 
-对于每个匹配到的标准能力，检查是否存在覆盖（overrides）。Main Agent 利用标准定义中的约束信息生成选项：
+对于每个匹配到的标准能力，检查是否存在微调（排除、约束覆盖、扩展）。Main Agent 利用标准定义中的约束信息生成选项：
+
+```json
+// Main Agent asks:
+{
+    “question”: “For ohai.cover, which optional features does the device NOT support?”,
+    “multiple_select”: true,
+    “options”: [
+        “tilt”,
+        “set_tilt”,
+        “all_supported”
+    ]
+}
+```
 
 ```json
 // Main Agent asks:
@@ -161,7 +174,9 @@ Main Agent 根据用户提供的设备描述，从标准能力库的分类索引
 }
 ```
 
-如果 Sub Agent 选择了非默认值，Main Agent 更新近似模型中该能力的约束。`ai_policy` 的覆盖探测同理——Main Agent 列出标准策略和可能的升级策略供选择。
+如果 Sub Agent 选择了非默认值，Main Agent 更新近似模型中该能力的约束。探测完排除和约束后，Main Agent 进一步确认是否有扩展字段（标准能力之外的额外功能），如有则按 Phase 3-5 流程探测扩展部分。
+
+`ai_policy` 作为独立的 Schema 字段，其探测也独立于能力结构探测——Main Agent 基于命令的语义预设合理的安全策略候选供选择。
 
 #### Phase 2：自定义能力发现
 
