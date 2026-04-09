@@ -387,7 +387,7 @@ Main Agent → 近似模型格式 → [Sub Agent LLM 转换] → 设备真实 AP
 Main Agent → 近似模型格式 → [Pads 代码转换] → 设备真实 API
 ```
 
-### Pads 安全性：AST 级静态分析
+### Pads 安全性：AST 静态分析
 
 Pads 代码由 Sub Agent 侧的 LLM 生成，而 Sub Agent 是不受信任的——因此 Pads 本质上也是不受信任的代码。我们通过以下机制保证安全：
 

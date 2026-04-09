@@ -255,7 +255,7 @@ effective_policy = user_config ?? device_schema ?? standard_default ?? "allow"
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `type` | string | 是 | 值类型：`boolean`、`integer`、`number`、`string` |
-| `description` | string | 是 | 状态说明（传入 LLM 上下文） |
+| `description` | string | 是 | 状态说明（用于能力建模与探测；Main Agent 最终消费的是探测后生成的近似能力模型描述，而非直接信任原始 Schema 自由文本） |
 | `minimum` / `maximum` | number | 否 | 数值约束 |
 | `unit` | string | 否 | 物理单位（如 `"%"`、`"K"`、`"°C"`） |
 | `enum` | array | 否 | 枚举值列表（type 为 string 时） |
@@ -291,7 +291,7 @@ effective_policy = user_config ?? device_schema ?? standard_default ?? "allow"
 |---|---|---|---|
 | `cmd_type` | string | 是 | `"state_cmd"`、`"instant_cmd"` 或 `"once_cmd"` |
 | `affects` | string[] | state_cmd 必填 | 此命令影响的 states 列表（可为空 `[]`） |
-| `description` | string | 是 | 命令说明（传入 LLM 上下文） |
+| `description` | string | 是 | 命令说明（用于能力建模与探测；LLM Tool 的 description 由探测后的近似能力模型生成，不直接沿用原始 Schema 自由文本） |
 | `params` | JSON Schema | 是 | 命令参数定义（[JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/json-schema-core)） |
 | `result` | JSON Schema | 否 | 成功回复的数据定义 |
 
