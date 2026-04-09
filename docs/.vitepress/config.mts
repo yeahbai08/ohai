@@ -55,6 +55,7 @@ export default withMermaid({
             { text: '设备 Schema 规范', link: '/protocol/schema' },
             { text: '标准能力库', link: '/protocol/standard-capabilities' },
             { text: 'AI 集成', link: '/protocol/ai-integration' },
+            { text: '历史分析数据保护', link: '/protocol/history-analysis-data-protection' },
             { text: '设备控制面板', link: '/protocol/device-panel-ui' },
             { text: '错误码规范', link: '/protocol/error-codes' },
           ],
